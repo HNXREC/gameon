@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Last Transmission</title>
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #0a0a1a;
+            color: #c0c0ff;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #game-container {
+            border: 1px solid #404080;
+            background-color: #1a1a3a;
+            padding: 20px;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 0 15px rgba(100, 100, 255, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            border-bottom: 1px solid #404080;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        header h1 {
+            margin: 0 0 10px 0;
+            color: #e0e0ff;
+            font-size: 1.5em;
+        }
+
+        #resource-display span {
+            margin: 0 10px;
+            font-weight: bold;
+        }
+        #resource-display .low { color: #ff8080; }
+        #resource-display .critical { color: #ff4040; font-weight: bold; animation: pulse 1s infinite; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        main {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        #log-display {
+            background-color: #10102a;
+            border: 1px dashed #303060;
+            padding: 15px;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+        #log-display p:first-child { margin-top: 0; }
+        #log-display p:last-child { margin-bottom: 0; }
+        .log-entry { margin-bottom: 5px; }
+        .log-time { color: #8080c0; margin-right: 5px; }
+        .log-error { color: #ff8080; }
+        .log-warning { color: #ffff80; }
+        .log-signal { color: #80ff80; }
+        .log-thought { color: #aaaaff; font-style: italic; }
+
+        #signal-display, #action-panel {
+            border: 1px solid #303060;
+            padding: 15px;
+            background-color: #151530;
+        }
+
+        #signal-display h2, #action-panel h2 {
+            margin-top: 0;
+            color: #d0d0ff;
+            border-bottom: 1px solid #404080;
+            padding-bottom: 5px;
+        }
+
+        #signal-content {
+            min-height: 50px;
+            font-style: italic;
+            color: #a0a0e0;
+            margin-bottom: 10px;
+            white-space: pre-wrap; /* Preserve formatting of garbled text */
+        }
+
+        #signal-actions button, #choices button {
+            background-color: #303060;
+            border: 1px solid #5050a0;
+            color: #e0e0ff;
+            padding: 10px 15px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.9em;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        #signal-actions button:hover, #choices button:hover {
+            background-color: #5050a0;
+            color: #ffffff;
+        }
+         #signal-actions button:disabled, #choices button:disabled {
+            background-color: #252545;
+            color: #707090;
+            cursor: not-allowed;
+            border-color: #404060;
+        }
+
+        footer {
+            border-top: 1px solid #404080;
+            padding-top: 10px;
+            margin-top: 15px;
+            text-align: center;
+            font-size: 0.8em;
+            color: #8080c0;
+        }
+
+        /* Sanity effects (examples) */
+        .insane-text-mild { /* Subtle distortion */
+            letter-spacing: 1px;
+            opacity: 0.95;
+        }
+        .insane-text-moderate { /* More noticeable */
+            text-shadow: 1px 1px 3px rgba(200, 0, 200, 0.5);
+            font-weight: bold;
+            letter-spacing: 0px; /* Sometimes collapses */
+        }
+        .insane-text-severe { /* Hard to read */
+             filter: blur(0.5px);
+             text-transform: uppercase;
+             color: #ff80ff;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <h1>Relay Station 7 // Status: <span id="station-status">Operational</span></h1>
+            <div id="resource-display">
+                <span>Power: <span id="power-level">100</span>%</span> |
+                <span>Oxygen: <span id="oxygen-level">100</span>%</span> |
+                <span>Sanity: <span id="sanity-level">100</span>%</span> |
+                <span>Time Elapsed: <span id="time-elapsed">0</span> Cycles</span>
+            </div>
+        </header>
+
+        <main id="main-content">
+            <div id="log-display">
+                 <!-- Log entries will be added here by JS -->
+            </div>
+            <div id="signal-display">
+                <h2>Incoming Signal Feed</h2>
+                <div id="signal-content">
+                    <p>-- Static --</p>
+                </div>
+                <div id="signal-actions">
+                     <!-- Signal interaction buttons dynamically added -->
+                </div>
+            </div>
+            <div id="action-panel">
+                <h2>Operator Actions</h2>
+                <div id="choices">
+                    <!-- Action buttons dynamically added -->
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p id="system-message">System Initialized. All channels quiet.</p>
+        </footer>
+    </div>
+
+    <script>
+        const gameState = {
+            power: 100,
+            oxygen: 100,
+            sanity: 100,
+            time: 0,
+            stationStatus: "Operational",
+            currentEvent: null,
+            eventQueue: [],
+            gameOver: false,
+            flags: {}, // To track story progress, choices made, etc.
+            logHistory: []
+        };
+
+        // DOM Elements
+        const powerLevelEl = document.getElementById('power-level');
+        const oxygenLevelEl = document.getElementById('oxygen-level');
+        const sanityLevelEl = document.getElementById('sanity-level');
+        const timeElapsedEl = document.getElementById('time-elapsed');
+        const stationStatusEl = document.getElementById('station-status');
+        const logDisplayEl = document.getElementById('log-display');
+        const signalContentEl = document.getElementById('signal-content');
+        const signalActionsEl = document.getElementById('signal-actions');
+        const choicesEl = document.getElementById('choices');
+        const systemMessageEl = document.getElementById('system-message');
+        const gameContainerEl = document.getElementById('game-container'); // For sanity effects
+
+        // --- Game Data: Events, Signals, Choices ---
+
+        const EVENTS = {
+            START: {
+                log: "Log Initialized. Systems nominal. Awaiting scheduled check-in from Command...",
+                nextEvent: 'CHECKIN_WAIT',
+                delay: 2,
+            },
+            CHECKIN_WAIT: {
+                log: "Cycle deadline for Command check-in approaching. All channels remain silent.",
+                choices: [
+                    { text: "Run standard diagnostics", action: () => { changeResource('power', -2); logEntry("Ran standard diagnostics. All green... suspiciously green?", "log-info"); advanceTime(1); }, nextEvent: 'CHECKIN_MISSED' },
+                    { text: "Boost reception array", action: () => { changeResource('power', -5); logEntry("Boosting reception array power. Listening intently.", "log-info"); advanceTime(1); }, nextEvent: 'CHECKIN_MISSED' },
+                    { text: "Conserve power, just wait", action: () => { logEntry("Conserving power. The silence is heavy.", "log-info"); advanceTime(1); }, nextEvent: 'CHECKIN_MISSED' }
+                ]
+            },
+            CHECKIN_MISSED: {
+                log: "COMMAND CHECK-IN MISSED. No signal received. Initiating contingency protocols.",
+                systemMessage: "Warning: Communication Link Lost.",
+                action: () => { gameState.flags.commLost = true; changeResource('sanity', -5); },
+                nextEvent: 'STATIC_1',
+                delay: 3
+            },
+            STATIC_1: {
+                log: "The static on the main channel shifts. A pattern... or just noise?",
+                signalText: "krsshh...---...zzzt...---...pop",
+                signalChoices: [
+                    { text: "Attempt basic decode (-3 Power)", cost: { power: 3 }, action: () => { logEntry("Decoding attempt: Pattern resembles old distress code fragment, but heavily corrupted.", "log-signal"); changeResource('sanity', -2); }, nextEvent: 'DECISION_1' },
+                    { text: "Boost signal clarity (-5 Power)", cost: { power: 5 }, action: () => { logEntry("Boosting signal... it sounds almost like... breathing? No, just interference.", "log-signal"); changeResource('sanity', -4); }, nextEvent: 'DECISION_1' },
+                    { text: "Ignore, likely interference", action: () => { logEntry("Ignored the static fluctuation. Must maintain focus.", "log-info"); }, nextEvent: 'DECISION_1' }
+                ],
+                delay: 2,
+            },
+            DECISION_1: {
+                 log: "Station running on reserve power protocols. Oxygen recyclers seem louder than usual.",
+                 choices: [
+                     { text: "Check Life Support (-2 Power)", cost: { power: 2 }, action: () => { logEntry("Life support functioning within acceptable parameters. Oxygen level stable for now.", "log-info"); changeResource('oxygen', 0); advanceTime(1); }, nextEvent: 'LOW_POWER_WARN' },
+                     { text: "Review emergency broadcast protocols", action: () => { logEntry("Reviewed protocols. Sending a blind distress call requires significant power.", "log-info"); advanceTime(1); }, nextEvent: 'LOW_POWER_WARN' },
+                     { text: "Try to get some rest (-5 Sanity)", cost: { sanity: 5 }, action: () => { logEntry("Tried to rest. Sleep is difficult. Did I hear scratching?", "log-thought"); changeResource('power', -1); changeResource('oxygen', -1); advanceTime(4); }, nextEvent: 'LOW_POWER_WARN' }
+                 ]
+             },
+            LOW_POWER_WARN: {
+                condition: () => gameState.power < 50 && !gameState.flags.lowPowerWarned,
+                log: "WARNING: Main power reserves below 50%. Non-essential systems automatically shut down.",
+                systemMessage: "Low Power Warning",
+                action: () => { gameState.flags.lowPowerWarned = true; changeResource('sanity', -5); },
+                nextEvent: 'STRANGE_SIGNAL_1', // Or another event
+                delay: 1,
+                isPriority: true // This event should happen if condition met
+            },
+            STRANGE_SIGNAL_1: {
+                 log: "A new signal emerges from the noise. Clearer this time, but... strange.",
+                 signalText: "... [unintelligible whispers] ... Seven ... [static burst] ... dark ... listening ...",
+                 signalChoices: [
+                    { text: "Focus analysis (-4 Power, -3 Sanity)", cost: { power: 4, sanity: 3 }, action: () => { logEntry("Analysis suggests non-human origin, or severe signal degradation mimicking speech. Unsettling.", "log-signal"); gameState.flags.heardWhispers = true; }, nextEvent: 'PANIC_EVENT_CHECK' },
+                    { text: "Broadcast a hail? (-6 Power)", cost: { power: 6 }, action: () => { logEntry("Sent a standard identification hail. No response, only silence... and the whispers seem quieter now.", "log-info"); changeResource('sanity', -5); }, nextEvent: 'PANIC_EVENT_CHECK' },
+                    { text: "Shut down external receivers (-1 Power)", cost: { power: 1 }, action: () => { logEntry("External receivers temporarily offline. The silence is absolute, but feels wrong.", "log-warning"); changeResource('sanity', +2); gameState.flags.receiversDown = true; }, nextEvent: 'PANIC_EVENT_CHECK' }
+                 ],
+                 delay: 3
+            },
+             PANIC_EVENT_CHECK: {
+                condition: () => gameState.sanity < 40 && !gameState.flags.panicEvent1,
+                log: "The walls feel like they're closing in. Hard to breathe. Is the air thinner?",
+                systemMessage: "Psychological Stress Detected",
+                action: () => {
+                    logEntry("PANIC ATTACK IMMINENT. Must... stay... calm.", "log-error");
+                    gameState.flags.panicEvent1 = true;
+                    changeResource('oxygen', -5, true); // Direct loss
+                    changeResource('power', -3, true); // Fumbling controls
+                    changeResource('sanity', -10);
+                 },
+                 choices: [
+                     { text: "Focus on breathing (Attempt to regain Sanity)", action: () => { const recovered = Math.random() > 0.4; logEntry(recovered ? "Managed to calm down slightly. Focus regained." : "Couldn't stop shaking. Lost time.", "log-thought"); if(recovered) changeResource('sanity', 5); else changeResource('sanity', -5); advanceTime(1);}, nextEvent: 'SYSTEM_FAILURE_CHECK' },
+                     { text: "Take sedative (Uses medical supply - Not Implemented Yet)", disabled: true, action: () => {}, nextEvent: 'SYSTEM_FAILURE_CHECK' }, // Placeholder
+                 ],
+                isPriority: true
+             },
+             SYSTEM_FAILURE_CHECK: {
+                condition: () => (gameState.power < 20 || gameState.oxygen < 20) && !gameState.flags.systemFailure imminent,
+                log: "CRITICAL ALERT: Multiple system failures detected. Power or Oxygen levels critical.",
+                systemMessage: "CRITICAL SYSTEM ALERT",
+                action: () => {
+                    gameState.flags.systemFailureImminent = true;
+                    gameState.stationStatus = "CRITICAL";
+                    changeResource('sanity', -15);
+                },
+                nextEvent: 'FINAL_CHOICE_PREP',
+                delay: 1,
+                isPriority: true
+             },
+            FINAL_CHOICE_PREP: {
+                log: "The station is dying. Only enough power for one last significant action, maybe two.",
+                systemMessage: "Reserve Power Only",
+                action: () => { gameState.stationStatus = "FAILING"; },
+                nextEvent: 'FINAL_CHOICE',
+                delay: 1
+            },
+            FINAL_CHOICE: {
+                log: "This is it. The end of the line. What is your final act?",
+                choices: [
+                    { text: "Broadcast Distress Signal (-15 Power)", cost: { power: 15 }, action: () => { gameState.flags.finalAction = 'distress'; }, nextEvent: 'END_GAME' },
+                    { text: "Transmit Log Data (-10 Power)", cost: { power: 10 }, action: () => { gameState.flags.finalAction = 'log'; }, nextEvent: 'END_GAME' },
+                    { text: "Send Warning based on signals (-12 Power)", cost: { power: 12 }, condition: () => gameState.flags.heardWhispers, action: () => { gameState.flags.finalAction = 'warning'; }, nextEvent: 'END_GAME' },
+                    { text: "Attempt Self-Repair (-8 Power, -5 Oxygen)", cost: { power: 8, oxygen: 5 }, action: () => { gameState.flags.finalAction = 'repair'; }, nextEvent: 'END_GAME' },
+                    { text: "Do nothing. Wait for the end.", action: () => { gameState.flags.finalAction = 'nothing'; }, nextEvent: 'END_GAME' }
+                ]
+            },
+            END_GAME: {
+                action: () => { endGame(); }
+            }
+
+            // --- Add many more events, branching paths, signals ---
+        };
+
+        // --- Core Game Logic ---
+
+        function initGame() {
+            gameState.power = 100;
+            gameState.oxygen = 100;
+            gameState.sanity = 100;
+            gameState.time = 0;
+            gameState.stationStatus = "Operational";
+            gameState.currentEvent = null;
+            gameState.eventQueue = [];
+            gameState.gameOver = false;
+            gameState.flags = {};
+            gameState.logHistory = [];
+            logDisplayEl.innerHTML = ''; // Clear log
+            signalContentEl.innerHTML = '<p>-- Static --</p>';
+            signalActionsEl.innerHTML = '';
+            choicesEl.innerHTML = '';
+            systemMessageEl.textContent = 'System Initialized. All channels quiet.';
+            gameContainerEl.className = ''; // Reset sanity effects
+
+            scheduleEvent('START');
+            updateDisplay();
+            gameLoop(); // Start the first cycle
+        }
+
+        function logEntry(message, type = "log-info") {
+            // Prevent log flooding in final stages
+            if (gameState.logHistory.length > 50 && !gameState.gameOver) {
+                gameState.logHistory.shift(); // Remove oldest if too long
+            }
+
+            const timeStamp = `[Cycle ${gameState.time}]`;
+            const entry = `<p class="log-entry ${type}"><span class="log-time">${timeStamp}</span> ${message}</p>`;
+            gameState.logHistory.push(entry);
+
+            // Apply sanity effects to log rendering itself
+            let sanityClass = '';
+            if (gameState.sanity < 60) sanityClass = 'insane-text-mild';
+            if (gameState.sanity < 40) sanityClass = 'insane-text-moderate';
+            if (gameState.sanity < 20) sanityClass = 'insane-text-severe';
+
+            if (sanityClass) {
+                 const p = document.createElement('p');
+                 p.className = `log-entry ${type} ${sanityClass}`;
+                 p.innerHTML = `<span class="log-time">${timeStamp}</span> ${message}`;
+                 logDisplayEl.appendChild(p);
+            } else {
+                 logDisplayEl.innerHTML += entry; // Use innerHTML directly if no effect needed for performance
+            }
+
+            logDisplayEl.scrollTop = logDisplayEl.scrollHeight; // Auto-scroll
+        }
+
+        function updateDisplay() {
+            powerLevelEl.textContent = Math.round(gameState.power);
+            oxygenLevelEl.textContent = Math.round(gameState.oxygen);
+            sanityLevelEl.textContent = Math.round(gameState.sanity);
+            timeElapsedEl.textContent = gameState.time;
+            stationStatusEl.textContent = gameState.stationStatus;
+
+            // Resource level styling
+            [powerLevelEl, oxygenLevelEl, sanityLevelEl].forEach(el => {
+                const val = parseInt(el.textContent);
+                el.classList.remove('low', 'critical');
+                if (val < 50) el.classList.add('low');
+                if (val < 20) el.classList.add('critical');
+            });
+
+             // Apply global sanity visual effects
+            gameContainerEl.className = ''; // Reset
+            if (gameState.sanity < 50 && Math.random() < 0.1) { // Flickering effect maybe?
+                 // Could add a subtle screen flicker effect via CSS class toggle
+            }
+             if (gameState.sanity < 30) {
+                 gameContainerEl.classList.add('insane-text-mild'); // Apply mild distortion to everything
+             }
+             if (gameState.sanity < 15) {
+                 gameContainerEl.classList.add('insane-text-moderate'); // More distortion
+             }
+
+            // Update System Message
+            if (gameState.currentEvent && gameState.currentEvent.systemMessage) {
+                 systemMessageEl.textContent = gameState.currentEvent.systemMessage;
+            }
+        }
+
+        function changeResource(resource, amount, absolute = false) {
+            if (gameState.gameOver) return;
+
+            const oldValue = gameState[resource];
+            if (absolute) {
+                gameState[resource] = Math.max(0, oldValue + amount);
+            } else {
+                // Relative change, maybe affected by sanity or station status later
+                gameState[resource] = Math.max(0, gameState[resource] + amount);
+            }
+
+            // Cap resources
+            if (resource !== 'sanity') { // Sanity can theoretically go above 100 briefly maybe?
+                 gameState[resource] = Math.min(100, gameState[resource]);
+            } else {
+                 gameState.sanity = Math.min(150, gameState.sanity); // Allow temporary buffer?
+            }
+
+
+            // Log critical drops
+             if (oldValue >= 20 && gameState[resource] < 20) {
+                 logEntry(`CRITICAL LEVEL: ${resource.charAt(0).toUpperCase() + resource.slice(1)} below 20%`, "log-error");
+             } else if (oldValue >= 50 && gameState[resource] < 50) {
+                 logEntry(`Warning: ${resource.charAt(0).toUpperCase() + resource.slice(1)} below 50%`, "log-warning");
+             }
+
+
+            updateDisplay();
+            checkGameOver();
+        }
+
+        function advanceTime(cycles = 1) {
+             if (gameState.gameOver) return;
+             gameState.time += cycles;
+             // Passive resource drain per cycle
+             changeResource('power', -1 * cycles);
+             changeResource('oxygen', -0.5 * cycles);
+             // Passive sanity drain (increases with time/isolation)
+             changeResource('sanity', -0.2 * cycles * (1 + gameState.time / 50));
+
+            // Process event queue
+             gameState.eventQueue.forEach(ev => ev.delay -= cycles);
+             processEventQueue();
+             updateDisplay();
+        }
+
+        function scheduleEvent(eventId, delay = 0, isPriority = false) {
+            const eventData = EVENTS[eventId];
+            if (!eventData) {
+                console.error("Tried to schedule unknown event:", eventId);
+                return;
+            }
+             // Add event if condition met, or if no condition
+             if (eventData.condition === undefined || eventData.condition()) {
+                gameState.eventQueue.push({ id: eventId, delay: delay + (eventData.delay || 0), priority: isPriority || eventData.isPriority || false });
+                // Sort queue: priority events first, then lowest delay
+                gameState.eventQueue.sort((a, b) => {
+                    if (a.priority && !b.priority) return -1;
+                    if (!a.priority && b.priority) return 1;
+                    return a.delay - b.delay;
+                });
+            } else {
+                 // Condition not met, maybe log or handle differently?
+                 // console.log(`Condition for event ${eventId} not met.`);
+                 // If an event has unmet conditions, it might need a default 'nextEvent'
+                 if(eventData.conditionFailNextEvent) {
+                    scheduleEvent(eventData.conditionFailNextEvent);
+                 }
+            }
+
+        }
+
+         function processEventQueue() {
+             if (gameState.gameOver || gameState.currentEvent) return; // Don't process if busy or game over
+
+             const readyEvents = gameState.eventQueue.filter(ev => ev.delay <= 0);
+             if (readyEvents.length > 0) {
+                 // Priorities first, then earliest scheduled
+                 readyEvents.sort((a, b) => {
+                     if (a.priority && !b.priority) return -1;
+                     if (!a.priority && b.priority) return 1;
+                     // Among same priority, doesn't strictly matter, but FIFO makes sense
+                     return gameState.eventQueue.indexOf(a) - gameState.eventQueue.indexOf(b);
+                 });
+
+                 const eventToTrigger = readyEvents[0];
+                 gameState.eventQueue = gameState.eventQueue.filter(ev => ev !== eventToTrigger); // Remove from queue
+                 triggerEvent(eventToTrigger.id);
+             }
+         }
+
+        function triggerEvent(eventId) {
+            if (gameState.gameOver) return;
+
+            const event = EVENTS[eventId];
+            if (!event) {
+                console.error("Unknown event triggered:", eventId);
+                logEntry(`Error: Event ${eventId} not found.`, "log-error");
+                return; // Avoid getting stuck
+            }
+
+            gameState.currentEvent = { ...event, id: eventId }; // Store current event details
+
+            if (event.log) {
+                logEntry(event.log, event.logType || 'log-info');
+            }
+            if (event.action) {
+                event.action();
+            }
+
+             // Display Signal if present
+             signalContentEl.innerHTML = event.signalText ? `<p>${event.signalText}</p>` : '<p>-- Static --</p>';
+             signalActionsEl.innerHTML = ''; // Clear old signal actions
+             if (event.signalChoices) {
+                 event.signalChoices.forEach((choice, index) => {
+                    if (choice.condition === undefined || choice.condition()) {
+                         createButton(choice, index, signalActionsEl, 'handleSignalChoice');
+                     }
+                 });
+             }
+
+             // Display general choices if present
+             choicesEl.innerHTML = ''; // Clear old general choices
+             if (event.choices) {
+                 event.choices.forEach((choice, index) => {
+                    if (choice.condition === undefined || choice.condition()) {
+                         createButton(choice, index, choicesEl, 'handleActionChoice');
+                     }
+                 });
+             }
+
+            updateDisplay(); // Update after potential resource changes in event.action
+
+            // If event has no choices and a next step, schedule it automatically
+            if (!event.choices && !event.signalChoices && event.nextEvent) {
+                scheduleEvent(event.nextEvent, event.delay || 1);
+                gameState.currentEvent = null; // Allow next event processing
+                processEventQueue(); // Immediately check if next event is ready
+            } else if (!event.choices && !event.signalChoices && !event.nextEvent && !event.actionEndsGame) {
+                 // Event is a dead end with no choices? Might need a default continuation or end game trigger.
+                 logEntry("No further actions available from this event.", "log-warning");
+                  // Maybe schedule a generic 'wait' event or check game over?
+                 if (!gameState.gameOver) {
+                    // scheduleEvent('WAIT_FOR_SOMETHING', 5); // Example of a fallback
+                 }
+            }
+        }
+
+
+        function createButton(choice, index, parentElement, handlerName) {
+            const button = document.createElement('button');
+            button.textContent = choice.text;
+            button.dataset.index = index;
+            button.onclick = () => window[handlerName](index); // Use window scope for simplicity
+
+            // Check cost
+            let canAfford = true;
+            let costString = '';
+            if (choice.cost) {
+                costString = ' (Cost: ';
+                const costs = [];
+                for (const resource in choice.cost) {
+                    if (gameState[resource] < choice.cost[resource]) {
+                        canAfford = false;
+                    }
+                    costs.push(`${choice.cost[resource]} ${resource}`);
+                }
+                costString += costs.join(', ') + ')';
+                button.textContent += costString;
+            }
+
+            if (!canAfford || choice.disabled) {
+                button.disabled = true;
+            }
+
+            parentElement.appendChild(button);
+        }
+
+        window.handleSignalChoice = function(index) {
+            handleChoice(index, 'signalChoices');
+        }
+
+        window.handleActionChoice = function(index) {
+            handleChoice(index, 'choices');
+        }
+
+        function handleChoice(index, choiceType) {
+             if (gameState.gameOver || !gameState.currentEvent) return;
+
+            const choice = gameState.currentEvent[choiceType][index];
+            if (!choice) return;
+
+             // Deduct costs
+             if (choice.cost) {
+                 for (const resource in choice.cost) {
+                     changeResource(resource, -choice.cost[resource], true); // Absolute cost
+                 }
+             }
+
+            if (choice.action) {
+                choice.action();
+            }
+
+            // Clear current event state AFTER processing action
+            const nextEventId = choice.nextEvent || gameState.currentEvent.nextEvent; // Choice overrides event default
+            const currentEventLog = gameState.currentEvent.log; // Keep log context
+            gameState.currentEvent = null;
+             signalActionsEl.innerHTML = ''; // Clear buttons immediately
+             choicesEl.innerHTML = '';
+
+             if (nextEventId && nextEventId === 'END_GAME') {
+                endGame();
+             } else if (nextEventId) {
+                scheduleEvent(nextEventId);
+                advanceTime(choice.timeCost || 1); // Choices usually take 1 cycle unless specified
+             } else if (!gameState.gameOver) {
+                 // If no next event defined, maybe just advance time? Or log a pause.
+                 logEntry("Action completed. Monitoring status.", "log-info");
+                 advanceTime(choice.timeCost || 1);
+                 // Check if any queued events are now ready
+                 processEventQueue();
+             }
+
+             // If no event was triggered by processEventQueue (meaning queue empty or delays too long)
+             // And the game isn't over, we need a fallback or time just passes.
+             // This can happen if a choice leads nowhere explicitly.
+             if (!gameState.currentEvent && !gameState.gameOver && gameState.eventQueue.length === 0) {
+                 // Maybe schedule a generic 'waiting' event after a delay?
+                 // scheduleEvent('IDLE_WAIT', 5);
+             }
+        }
+
+
+        function gameLoop() {
+            if (gameState.gameOver) return;
+
+            // The core loop advances time implicitly via player actions or scheduled events.
+            // We might need a mechanism for time to pass if the player is idle,
+            // but in this event-driven model, time usually advances *because* of an event or choice.
+            // However, we DO need to check the event queue periodically.
+
+             processEventQueue(); // Check if any delayed events are ready
+
+            // Keep the loop running to check for future events
+            // Use setTimeout for non-blocking loop
+            setTimeout(gameLoop, 1000); // Check every second
+        }
+
+        function checkGameOver() {
+            if (gameState.gameOver) return true; // Already over
+
+            let reason = null;
+            if (gameState.power <= 0) reason = "Total power failure. Life support offline. Station dark.";
+            else if (gameState.oxygen <= 0) reason = "Oxygen depleted. Emergency reserves empty. Suffocation imminent.";
+            else if (gameState.sanity <= 0) reason = "Mind shattered. Reality crumbled. Lost in the static.";
+            // Add other potential game over conditions (e.g., specific event outcomes)
+
+            if (reason) {
+                gameState.gameOver = true;
+                gameState.stationStatus = "LOST";
+                logEntry(`FATAL ERROR: ${reason}`, "log-error");
+                systemMessageEl.textContent = "CONNECTION TERMINATED";
+                // Optionally trigger a final 'fade out' event or just display ending
+                displayEnding(reason);
+                return true;
+            }
+            return false;
+        }
+
+         function endGame() {
+             if (!gameState.gameOver) { // Ensure it's only called once properly
+                 gameState.gameOver = true;
+                 let finalMessage = "The transmission ends.";
+
+                 // Determine ending based on flags and final state
+                 const finalAction = gameState.flags.finalAction || 'none';
+
+                 if (finalAction === 'distress') {
+                     finalMessage = "A desperate distress call lances out into the void. Will anyone hear it?";
+                 } else if (finalAction === 'log') {
+                     finalMessage = "The station's final operational log is broadcast, a data-ghost adrift in space.";
+                 } else if (finalAction === 'warning') {
+                     finalMessage = "A fragmented warning about the darkness between the stars is sent. Was it heeded? Was it understood?";
+                 } else if (finalAction === 'repair') {
+                     const success = Math.random() > 0.7 && gameState.power > 5 && gameState.oxygen > 3; // Low chance
+                     if (success) {
+                         finalMessage = "Against all odds, a critical system stabilizes. You buy yourself... more time. But for what?";
+                         gameState.gameOver = false; // Game continues? Or just delays the inevitable?
+                         logEntry("Miraculous repair successful! Systems partially restored.", "log-info");
+                         changeResource('power', 15, true);
+                         changeResource('oxygen', 10, true);
+                         gameState.stationStatus = "Damaged";
+                         // TODO: Need a new event path here if game continues
+                         // For now, let's just treat it as a slightly better ending text.
+                         finalMessage += " (For now...)";
+                         gameState.gameOver = true; // Re-set to end for this example.
+                     } else {
+                         finalMessage = "Sparks fly. A final, futile attempt at repair hastens the end. Systems collapse.";
+                     }
+                 } else if (finalAction === 'nothing') {
+                     finalMessage = "Silence. You accept the inevitable, watching the lights fade one by one.";
+                 } else if(finalAction === 'none' && !checkGameOver()) {
+                    // Reached end state without explicit final choice (e.g. ran out of choices)
+                    finalMessage = "The station falls silent. No final message, just... entropy."
+                 }
+
+                 displayEnding(finalMessage);
+             }
+         }
+
+         function displayEnding(message) {
+             gameState.gameOver = true; // Ensure it's set
+             signalActionsEl.innerHTML = '';
+             choicesEl.innerHTML = '<h2>Game Over</h2>';
+             logEntry("--- End Transmission ---", "log-system");
+             systemMessageEl.textContent = "SIGNAL LOST";
+
+             const finalStatus = `Final State: Power=${Math.round(gameState.power)}%, Oxygen=${Math.round(gameState.oxygen)}%, Sanity=${Math.round(gameState.sanity)}%, Cycles=${gameState.time}`;
+             const endingDiv = document.createElement('div');
+             endingDiv.style.marginTop = '20px';
+             endingDiv.innerHTML = `<p>${message}</p><p><em>${finalStatus}</em></p><button onclick="initGame()">Restart</button>`;
+             choicesEl.appendChild(endingDiv);
+         }
+
+        // --- Initialise ---
+        document.addEventListener('DOMContentLoaded', initGame);
+
+    </script>
+</body>
+</html>
